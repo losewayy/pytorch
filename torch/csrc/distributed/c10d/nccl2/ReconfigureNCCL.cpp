@@ -12,6 +12,7 @@
 // order matches c10d's ordered-handle rank assignment; otherwise every rank
 // falls back to a fresh commInitRankConfig.
 
+#include <c10/util/irange.h>
 #ifdef USE_C10D_NCCL
 
 #include <torch/csrc/distributed/c10d/nccl2/ProcessGroupNCCL.hpp>
@@ -143,7 +144,7 @@ ReconfigureQuorum findReconfigureQuorum(
     return {};
   }
   int previousRank = -1;
-  for (int i = 0; i < quorum.size; ++i) {
+  for (const auto i : c10::irange(quorum.size)) {
     auto info = parseNCCLReconfigureHandle(handles[i]);
     if (info.uuid != quorum.uuid || info.rank <= previousRank) {
       return {};
@@ -387,7 +388,7 @@ c10::intrusive_ptr<::c10d::Work> ProcessGroupNCCL::reconfigure(
         reconfigure_uuid_,
         " but it is not initialized");
     std::unordered_set<int> keptRanks;
-    for (int i = 0; i < quorum.size; ++i) {
+    for (const auto i : c10::irange(quorum.size)) {
       keptRanks.insert(parseNCCLReconfigureHandle(handles[i]).rank);
     }
     for (int rank = 0; rank < comm_size_; ++rank) {

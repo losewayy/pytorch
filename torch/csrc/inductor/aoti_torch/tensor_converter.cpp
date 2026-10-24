@@ -1,3 +1,4 @@
+#include <c10/util/irange.h>
 #include <torch/csrc/inductor/aoti_torch/tensor_converter.h>
 #include <torch/csrc/inductor/aoti_torch/utils.h>
 
@@ -19,13 +20,13 @@ std::vector<at::Tensor> alloc_tensors_by_stealing_from_handles(
     size_t length) {
   // Find duplicates by recording the last known index for each handle.
   std::unordered_map<AtenTensorHandle, size_t> lastKnownIdx;
-  for (size_t i = 0; i < length; i++) {
+  for (const auto i : c10::irange(length)) {
     lastKnownIdx[handles[i]] = i;
   }
 
   std::vector<at::Tensor> result;
   result.reserve(length);
-  for (size_t i = 0; i < length; i++) {
+  for (const auto i : c10::irange(length)) {
     if (handles[i] == nullptr) {
       result.emplace_back();
       continue;

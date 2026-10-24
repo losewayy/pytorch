@@ -3,6 +3,7 @@
 // This source code is licensed under the BSD-style license found in the
 // LICENSE file in the root directory of this source tree.
 
+#include <c10/util/irange.h>
 #include <torch/csrc/distributed/c10d/ParamCommsUtils.hpp>
 
 namespace torch {
@@ -33,7 +34,7 @@ ParamCommsDebugInfo::ParamCommsDebugInfo(
       globalRankStride_(globalRankStride),
       isAsynchronizedOp_(isAsynchronizedOp) {
   if (globalRankStride > 0) {
-    for (int i = 0; i < worldSize; i++) {
+    for (const auto i : c10::irange(worldSize)) {
       groupRanks_.push_back(globalRankStart + i * globalRankStride);
     }
   }

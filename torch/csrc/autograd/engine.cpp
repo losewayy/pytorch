@@ -1799,7 +1799,7 @@ void GraphTask::stash_current_streams() {
   auto num_devices = guard.deviceCount();
   caller_current_streams_.resize(num_devices);
   if (num_devices > 0) {
-    for (c10::DeviceIndex idx = 0; idx < num_devices; idx++) {
+    for (const auto idx : c10::irange(num_devices)) {
       if (at::globalContext().getAcceleratorHooksInterface().hasPrimaryContext(
               idx)) {
         caller_current_streams_[idx] = guard.getStream({accelerator, idx});

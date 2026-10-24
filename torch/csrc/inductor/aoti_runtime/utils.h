@@ -11,6 +11,7 @@
 // in model.so, and should not refer to any aten/c10 headers except the stable
 // C ABI defined in torch/csrc/inductor/aoti_torch/c/shim.h. The same rule
 // applies to other files under torch/csrc/inductor/aoti_runtime/.
+#include <c10/util/irange.h>
 #include <torch/csrc/inductor/aoti_torch/c/shim.h>
 #include <torch/headeronly/util/shim_utils.h>
 
@@ -265,7 +266,7 @@ inline std::vector<RAIIAtenTensorHandle> steal_from_raw_handles_to_raii_handles(
     size_t size) {
   std::vector<RAIIAtenTensorHandle> result;
   result.reserve(size);
-  for (size_t i = 0; i < size; i++) {
+  for (const auto i : c10::irange(size)) {
     result.emplace_back(handles[i]);
     handles[i] = nullptr;
   }

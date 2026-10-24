@@ -1,3 +1,4 @@
+#include <c10/util/irange.h>
 #if !defined(C10_MOBILE) && !defined(ANDROID)
 #include <ATen/DynamicLibrary.h>
 #include <ATen/record_function.h>
@@ -394,7 +395,7 @@ std::unordered_map<std::string, std::string> AOTIModelContainerRunner::
   size_t num_constants{0};
   AOTI_RUNTIME_ERROR_CODE_CHECK(
       get_num_constants_func_(container_handle_, &num_constants));
-  for (size_t i = 0; i < num_constants; ++i) {
+  for (const auto i : c10::irange(num_constants)) {
     const char* name{nullptr};
     const char* original_fqn{nullptr};
     AOTI_RUNTIME_ERROR_CODE_CHECK(
@@ -412,7 +413,7 @@ std::unordered_map<std::string, int32_t> AOTIModelContainerRunner::
   size_t num_constants{0};
   AOTI_RUNTIME_ERROR_CODE_CHECK(
       get_num_constants_func_(container_handle_, &num_constants));
-  for (size_t i = 0; i < num_constants; ++i) {
+  for (const auto i : c10::irange(num_constants)) {
     const char* name{nullptr};
     int32_t dtype{0};
     AOTI_RUNTIME_ERROR_CODE_CHECK(
