@@ -5,6 +5,7 @@ import contextlib
 import copy
 import operator
 import unittest
+import unittest.mock
 
 import torch
 import torch._dynamo
@@ -51,8 +52,6 @@ def _(x: torch.Tensor) -> torch.Tensor:
 
 @contextlib.contextmanager
 def _record_fusion_subsets():
-    from unittest import mock
-
     rule_cls = torch._inductor.fx_passes.group_batch_fusion.BatchLinearLHSFusion
     recorded: list[int] = []
     original_fuse = rule_cls.fuse
@@ -61,7 +60,7 @@ def _record_fusion_subsets():
         recorded.append(len(subset))
         original_fuse(self, graph, subset)
 
-    with mock.patch.object(rule_cls, "fuse", new=spy):
+    with unittest.mock.patch.object(rule_cls, "fuse", new=spy):
         yield recorded
 
 
@@ -651,29 +650,40 @@ class TestGroupBatchFusion(TestCase):
             "output",
             "merge_view",
             "split_view",
+            "reshape_split",
             "transpose",
             "getitem",
+            "function_transpose",
+            "function_permute",
+            "function_reshape_split",
+            "aten_view_split",
             "stride",
+            "stride_method",
             "mutable",
+            "mutable_method",
             "conversion",
             "conversion_dtype",
             "conversion_dtype_after_transpose",
             "conversion_noop_after_transpose",
             "out_user",
-            "dropout_eval_output",
-            "dropout_eval_mutation",
-            "dropout_eval_merge_view",
-            "dropout_training",
-            "dropout_p0_mutation",
-            "inplace_relu",
-            "inplace_silu",
-            "inplace_dropout",
             "custom",
             "higher_order",
             "pointwise",
             "size",
             "contiguous",
+            "contiguous_copy",
+            "contiguous_preserve",
             "contiguous_mutation",
+            "contiguous_unsafe_view_split_mutation",
+            "contiguous_unsafe_view_merge_mutation",
+            "contiguous_broadcast_opaque",
+            "contiguous_unsafe_split_mutation",
+            "contiguous_setitem_mutation",
+            "contiguous_higher_order_mutation",
+            "contiguous_conversion_copy",
+            "alias_mutation_getitem",
+            "alias_mutation_transpose",
+            "alias_then_merge_view",
         ],
     )
     def test_batch_linear_lhs_direct_user_classification(self, case):
@@ -683,6 +693,14 @@ class TestGroupBatchFusion(TestCase):
         from torch._inductor.fx_passes.group_batch_fusion import (
             _has_layout_sensitive_user,
         )
+
+        def getitem(graph, node):
+            return graph.call_function(operator.getitem, args=(node, 0))
+
+        def slice_getitem(graph, node):
+            result = graph.call_function(operator.getitem, args=(node, slice(0, 2)))
+            result.meta["example_value"] = torch.randn(2, 6)
+            return result
 
         def contiguous(graph, node):
             result = graph.call_method("contiguous", args=(node,))
@@ -728,6 +746,50 @@ class TestGroupBatchFusion(TestCase):
                 result.meta["example_value"] = node.meta["example_value"]
             return result
 
+        def broadcast_opaque(graph, node):
+            # Opaque ops are rejected before the mutation scan. The control has
+            # no mutation, so sensitivity must come from the op itself.
+            copied = contiguous(graph, node)
+            result = graph.call_function(torch.broadcast_tensors, args=(copied, copied))
+            result.meta["example_value"] = [
+                copied.meta["example_value"],
+                copied.meta["example_value"],
+            ]
+            return result
+
+        def unsafe_view(graph, node, shape):
+            result = graph.call_function(
+                torch.ops.aten._unsafe_view.default, args=(node, shape)
+            )
+            result.meta["example_value"] = node.meta["example_value"].view(shape)
+            return result
+
+        def unsafe_split_mutation(graph, node):
+            copied = contiguous(graph, node)
+            split = graph.call_function(
+                torch.ops.aten.unsafe_split.Tensor, args=(copied, 24, 1)
+            )
+            split.meta["example_value"] = [copied.meta["example_value"]]
+            item = graph.call_function(operator.getitem, args=(split, 0))
+            item.meta["example_value"] = copied.meta["example_value"]
+            return graph.call_method("mul_", args=(item, 2))
+
+        def setitem_mutation(graph, node):
+            copied = contiguous(graph, node)
+            return graph.call_function(operator.setitem, args=(copied, 0, 0))
+
+        def higher_order_mutation(graph, node):
+            copied = contiguous(graph, node)
+            return graph.call_function(
+                triton_kernel_wrapper_mutation, kwargs={"kwargs": {"input": copied}}
+            )
+
+        def conversion_copy_chain(graph, node):
+            copied = contiguous(graph, node)
+            result = graph.call_method("double", args=(copied,))
+            result.meta["example_value"] = torch.randn(4, 6, dtype=torch.float64)
+            return result
+
         builders = {
             "output": lambda graph, node: graph.output(node),
             "merge_view": lambda graph, node: graph.call_method(
@@ -736,17 +798,36 @@ class TestGroupBatchFusion(TestCase):
             "split_view": lambda graph, node: graph.call_method(
                 "view", args=(node, 2, 2, 6)
             ),
+            "reshape_split": lambda graph, node: graph.call_method(
+                "reshape", args=(node, 2, 2, 6)
+            ),
             "transpose": lambda graph, node: graph.call_method(
                 "transpose", args=(node, 0, 1)
             ),
-            "getitem": lambda graph, node: graph.call_function(
-                operator.getitem, args=(node, 0)
+            "getitem": getitem,
+            "function_transpose": lambda graph, node: graph.call_function(
+                torch.transpose, args=(node, 0, 1)
+            ),
+            "function_permute": lambda graph, node: graph.call_function(
+                torch.permute, args=(node, (1, 0))
+            ),
+            "function_reshape_split": lambda graph, node: graph.call_function(
+                torch.reshape, args=(node, (2, 2, 6))
+            ),
+            "aten_view_split": lambda graph, node: graph.call_function(
+                torch.ops.aten.view.default, args=(node, [2, 2, 6])
             ),
             "stride": lambda graph, node: graph.call_function(
                 torch.ops.aten.sym_stride.int, args=(node, 0)
             ),
+            "stride_method": lambda graph, node: graph.call_method(
+                "stride", args=(node, 0)
+            ),
             "mutable": lambda graph, node: graph.call_function(
                 torch.ops.aten.add_.Tensor, args=(node, 1)
+            ),
+            "mutable_method": lambda graph, node: graph.call_method(
+                "add_", args=(node, 1)
             ),
             "conversion": lambda graph, node: graph.call_method(
                 "mul_", args=(conversion(graph, node, False), 2)
@@ -794,18 +875,60 @@ class TestGroupBatchFusion(TestCase):
             ),
             "size": lambda graph, node: graph.call_method("size", args=(node, 0)),
             "contiguous": contiguous,
+            "contiguous_copy": lambda graph, node: graph.call_method(
+                "contiguous",
+                args=(node,),
+                kwargs={"memory_format": torch.channels_last},
+            ),
+            "contiguous_preserve": lambda graph, node: graph.call_method(
+                "contiguous",
+                args=(node,),
+                kwargs={"memory_format": torch.preserve_format},
+            ),
             "contiguous_mutation": lambda graph, node: graph.call_method(
                 "mul_", args=(contiguous(graph, node), 2)
+            ),
+            "contiguous_unsafe_view_split_mutation": lambda graph, node: (
+                graph.call_method(
+                    "mul_",
+                    args=(unsafe_view(graph, contiguous(graph, node), [1, 4, 6]), 2),
+                )
+            ),
+            "contiguous_unsafe_view_merge_mutation": lambda graph, node: (
+                graph.call_method(
+                    "mul_",
+                    args=(unsafe_view(graph, contiguous(graph, node), [24]), 2),
+                )
+            ),
+            "contiguous_broadcast_opaque": broadcast_opaque,
+            "contiguous_unsafe_split_mutation": unsafe_split_mutation,
+            "contiguous_setitem_mutation": setitem_mutation,
+            "contiguous_higher_order_mutation": higher_order_mutation,
+            "contiguous_conversion_copy": conversion_copy_chain,
+            "alias_mutation_getitem": lambda graph, node: graph.call_method(
+                "mul_", args=(getitem(graph, node), 2)
+            ),
+            "alias_mutation_transpose": lambda graph, node: graph.call_method(
+                "add_",
+                args=(graph.call_method("transpose", args=(node, 0, 1)), 1),
+            ),
+            "alias_then_merge_view": lambda graph, node: graph.call_method(
+                "view", args=(slice_getitem(graph, node), -1)
             ),
         }
         safe = {
             "split_view",
+            "reshape_split",
             "transpose",
             "getitem",
+            "function_transpose",
+            "function_permute",
+            "function_reshape_split",
+            "aten_view_split",
             "pointwise",
             "size",
             "contiguous",
-            "dropout_training",
+            "contiguous_conversion_copy",
             "conversion_dtype",
             "conversion_dtype_after_transpose",
         }
@@ -815,6 +938,58 @@ class TestGroupBatchFusion(TestCase):
         linear.meta["example_value"] = torch.randn(4, 6)
         builders[case](graph, linear)
         self.assertEqual(_has_layout_sensitive_user(linear), case not in safe)
+
+    @parametrize(
+        "call", ["packet", "default", "packet_out", "out", "mutating", "builtin_out"]
+    )
+    def test_batch_linear_lhs_overload_safety(self, call):
+        from torch._inductor.fx_passes.group_batch_fusion import (
+            _has_layout_sensitive_user,
+        )
+
+        graph = torch.fx.Graph()
+        linear = graph.placeholder("linear")
+        linear.meta["example_value"] = torch.randn(4, 6)
+        out = graph.placeholder("out")
+        out.meta["example_value"] = torch.empty(4, 6)
+        target = {
+            "packet": torch.ops.aten.sin,
+            "default": torch.ops.aten.sin.default,
+            "packet_out": torch.ops.aten.sin,
+            "out": torch.ops.aten.sin.out,
+            "mutating": torch.ops.aten.sin_,
+            "builtin_out": torch.sin,
+        }[call]
+        kwargs = {"out": out} if call in ("packet_out", "out", "builtin_out") else {}
+        graph.call_function(target, args=(linear,), kwargs=kwargs)
+        self.assertEqual(
+            _has_layout_sensitive_user(linear),
+            call in ("packet_out", "out", "mutating", "builtin_out"),
+        )
+
+    @parametrize("activation", [torch.nn.functional.relu, torch.nn.functional.silu])
+    @parametrize("inplace", [False, True])
+    def test_batch_linear_lhs_functional_activation(self, activation, inplace):
+        from torch._inductor.fx_passes.group_batch_fusion import (
+            _has_layout_sensitive_user,
+        )
+
+        graph = torch.fx.Graph()
+        linear = graph.placeholder("linear")
+        graph.call_function(activation, args=(linear,), kwargs={"inplace": inplace})
+        self.assertEqual(_has_layout_sensitive_user(linear), inplace)
+
+    @parametrize("activation", [torch.nn.functional.sigmoid, torch.nn.functional.tanh])
+    def test_batch_linear_lhs_functional_alias_free(self, activation):
+        from torch._inductor.fx_passes.group_batch_fusion import (
+            _has_layout_sensitive_user,
+        )
+
+        graph = torch.fx.Graph()
+        linear = graph.placeholder("linear")
+        linear.meta["example_value"] = torch.randn(4, 6)
+        graph.call_function(activation, args=(linear,))
+        self.assertFalse(_has_layout_sensitive_user(linear))
 
     @torch._inductor.config.patch(
         pre_grad_fusion_options={
@@ -847,6 +1022,31 @@ class TestGroupBatchFusion(TestCase):
         self.assertEqual(actual, expected)
         self.assertEqual(counters["inductor"]["batch_linear_lhs"], 1)
         self.assertEqual(subsets, [2])
+
+    @torch._inductor.config.patch(
+        pre_grad_fusion_options={
+            "batch_linear_lhs": {"devices": ("cpu",), "min_fuse_set_size": 2},
+        },
+        post_grad_fusion_options={},
+    )
+    def test_batch_linear_lhs_skips_graph_outputs(self):
+        class M(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.a = torch.nn.Linear(64, 16, bias=False)
+                self.b = torch.nn.Linear(64, 16, bias=False)
+
+            def forward(self, x):
+                return self.a(x), self.b(x)
+
+        module = M().eval()
+        x = torch.randn(32, 64)
+        counters.clear()
+        with torch.no_grad():
+            expected = module(x)
+            actual = torch.compile(module, fullgraph=True)(x)
+        self.assertEqual(actual, expected)
+        self.assertEqual(counters["inductor"]["batch_linear_lhs"], 0)
 
     @parametrize("alias", ["transpose", "permute"])
     @torch._inductor.config.patch(
@@ -916,6 +1116,38 @@ class TestGroupBatchFusion(TestCase):
         self.assertEqual(counters["inductor"]["batch_linear_lhs"], 1)
         self.assertEqual(subsets, [2])
 
+    @torch._inductor.config.patch(
+        pre_grad_fusion_options={
+            "batch_linear_lhs": {"devices": ("cpu",), "min_fuse_set_size": 2},
+        },
+        post_grad_fusion_options={},
+    )
+    def test_batch_linear_lhs_keeps_getitem_fusion(self):
+        class M(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.large = torch.nn.Linear(64, 48, bias=False)
+                self.a = torch.nn.Linear(64, 16, bias=False)
+                self.b = torch.nn.Linear(64, 16, bias=False)
+
+            def forward(self, x):
+                return (
+                    torch.sin(self.large(x)[:, :16]),
+                    torch.sin(self.a(x)),
+                    torch.cos(self.b(x)),
+                )
+
+        module = M().eval()
+        x = torch.randn(32, 64)
+        counters.clear()
+        with torch.no_grad():
+            expected = module(x)
+            with _record_fusion_subsets() as subsets:
+                actual = torch.compile(module, fullgraph=True)(x)
+        self.assertEqual(actual, expected)
+        self.assertEqual(counters["inductor"]["batch_linear_lhs"], 1)
+        self.assertEqual(subsets, [3])
+
     @parametrize(
         "chain",
         [
@@ -925,6 +1157,7 @@ class TestGroupBatchFusion(TestCase):
             "conversion",
             "unsafe_view",
             "broadcast",
+            "broadcast_control",
             "setitem",
         ],
     )
@@ -956,11 +1189,12 @@ class TestGroupBatchFusion(TestCase):
                     mutated = mutated.float()
                 elif chain == "unsafe_view":
                     mutated = torch.ops.aten._unsafe_view.default(mutated, [1536])
-                elif chain == "broadcast":
+                elif chain in ("broadcast", "broadcast_control"):
                     mutated = torch.broadcast_tensors(mutated, mutated)[0]
                 elif chain == "setitem":
                     mutated[0] = 0
-                mutated.mul_(2)
+                if chain != "broadcast_control":
+                    mutated.mul_(2)
                 return (
                     torch.sin(mutated),
                     torch.cos(large),
@@ -999,6 +1233,81 @@ class TestGroupBatchFusion(TestCase):
                 large = self.large(x).contiguous(memory_format=torch.preserve_format)
                 return (
                     torch.sin(large),
+                    torch.sin(self.a(x)),
+                    torch.cos(self.b(x)),
+                )
+
+        module = M().eval()
+        x = torch.randn(32, 64)
+        counters.clear()
+        with torch.no_grad():
+            expected = module(x)
+            with _record_fusion_subsets() as subsets:
+                actual = torch.compile(module, fullgraph=True)(x)
+        self.assertEqual(actual, expected)
+        self.assertEqual(counters["inductor"]["batch_linear_lhs"], 1)
+        self.assertEqual(subsets, [2])
+
+    @torch._inductor.config.patch(
+        pre_grad_fusion_options={
+            "batch_linear_lhs": {"devices": ("cpu",), "min_fuse_set_size": 2},
+        },
+        post_grad_fusion_options={},
+    )
+    def test_batch_linear_lhs_keeps_conversion_copy_fusion(self):
+        class M(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.large = torch.nn.Linear(64, 48, bias=False)
+                self.a = torch.nn.Linear(64, 16, bias=False)
+                self.b = torch.nn.Linear(64, 16, bias=False)
+
+            def forward(self, x):
+                # A dtype-changing conversion produces a fresh tensor, so it
+                # neither aliases nor exposes the fused stride.
+                large = self.large(x).contiguous().double()
+                return (
+                    torch.sin(large),
+                    torch.sin(self.a(x)),
+                    torch.cos(self.b(x)),
+                )
+
+        module = M().eval()
+        x = torch.randn(32, 64)
+        counters.clear()
+        with torch.no_grad():
+            expected = module(x)
+            with _record_fusion_subsets() as subsets:
+                actual = torch.compile(module, fullgraph=True)(x)
+        self.assertEqual(actual, expected)
+        self.assertEqual(counters["inductor"]["batch_linear_lhs"], 1)
+        self.assertEqual(subsets, [3])
+
+    @parametrize("alias", ["getitem", "transpose", "split_view"])
+    @torch._inductor.config.patch(
+        pre_grad_fusion_options={
+            "batch_linear_lhs": {"devices": ("cpu",), "min_fuse_set_size": 2},
+        },
+        post_grad_fusion_options={},
+    )
+    def test_batch_linear_lhs_skips_sensitive_alias_users(self, alias):
+        class M(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.large = torch.nn.Linear(64, 48, bias=False)
+                self.a = torch.nn.Linear(64, 16, bias=False)
+                self.b = torch.nn.Linear(64, 16, bias=False)
+
+            def forward(self, x):
+                large = self.large(x)
+                if alias == "getitem":
+                    large = large[0:2]
+                elif alias == "transpose":
+                    large = large.transpose(0, 1).transpose(0, 1)
+                else:
+                    large = large.view(8, 4, 3, 16)
+                return (
+                    _require_contiguous(large),
                     torch.sin(self.a(x)),
                     torch.cos(self.b(x)),
                 )
