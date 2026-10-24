@@ -24,6 +24,7 @@
 #include <mutex>
 #include <tuple>
 #include <type_traits>
+#include <c10/util/irange.h>
 
 namespace at {
 namespace native {
@@ -77,7 +78,7 @@ __global__ void distribution_elementwise_grid_stride_kernel(int64_t numel,
   for(int64_t linear_index = idx; linear_index < rounded_size; linear_index += blockDim.x * gridDim.x * unroll_factor) {
     auto rand = dist_func(&state);
     #pragma unroll
-    for (int ii = 0; ii < unroll_factor; ii++) {
+    for (const auto ii : c10::irange(unroll_factor)) {
       int64_t li = linear_index + blockDim.x * gridDim.x * ii;
       if (li < numel) {
         transform_func(li, static_cast<accscalar_t>((&rand.x)[ii]));

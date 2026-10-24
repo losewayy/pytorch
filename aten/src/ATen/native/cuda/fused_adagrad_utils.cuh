@@ -1,5 +1,6 @@
 #pragma once
 #include <ATen/core/Tensor.h>
+#include <c10/util/irange.h>
 #include <ATen/native/cuda/ForeachFunctors.cuh>
 #include <ATen/native/cuda/MultiTensorApply.cuh>
 
@@ -124,7 +125,7 @@ struct FusedAdagradMathFunctor {
             found_inf_ptr);
 
 #pragma unroll
-        for (int i = 0; i < 3; i++) {
+        for (const auto i : c10::irange(3)) {
           if (i != kGradIdx || grad_scale_ptr) {
             store_args(args[i], r_args[i], i_start, chunk_size, n);
           }

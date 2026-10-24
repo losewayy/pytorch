@@ -9,6 +9,7 @@
 #include <ATen/native/cuda/MemoryAccess.cuh>
 
 #include <c10/util/C++17.h>
+#include <c10/util/irange.h>
 #include <tuple>
 
 
@@ -22,7 +23,7 @@ static OffsetCalculator<N> make_input_offset_calculator(const TensorIteratorBase
   TORCH_INTERNAL_ASSERT(N == iter.ntensors() - iter.noutputs());
   std::array<const int64_t*, array_size> strides;
   int64_t element_sizes[array_size];
-  for (int i = 0; i < N; i++) {
+  for (const auto i : c10::irange(N)) {
     strides[i] = iter.strides(i + iter.noutputs()).data();
     element_sizes[i] = iter.element_size(i + iter.noutputs());
   }
@@ -34,7 +35,7 @@ static OffsetCalculator<num_outputs> make_output_offset_calculator(const TensorI
   TORCH_INTERNAL_ASSERT(num_outputs == iter.noutputs());
   std::array<const int64_t*, num_outputs> strides;
   int64_t element_sizes[num_outputs];
-  for (int i = 0; i < num_outputs; i++) {
+  for (const auto i : c10::irange(num_outputs)) {
     strides[i] = iter.strides(i).data();
     element_sizes[i] = iter.element_size(i);
   }
@@ -60,7 +61,7 @@ __device__ inline void elementwise_kernel_helper(func_t f, policy_t policy) {
 
   // compute
   #pragma unroll
-  for (int i = 0; i < elems_per_thread; i++) {
+  for (const auto i : c10::irange(elems_per_thread)) {
     if (policy.check_inbounds(i)) {
 #if defined(__HIP__)
       results[i] = c10::guts::apply(f, args[i]);
@@ -299,7 +300,7 @@ void gpu_kernel_multiple_outputs_impl(TensorIteratorBase& iter, const func_t& f)
   TORCH_INTERNAL_ASSERT(iter.ntensors() == ntensors);
 
   std::array<char*, ntensors> data;
-  for (int i = 0; i < ntensors; i++) {
+  for (const auto i : c10::irange(ntensors)) {
     data[i] = (char*)iter.data_ptr(i);
   }
 

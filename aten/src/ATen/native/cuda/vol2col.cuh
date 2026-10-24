@@ -6,6 +6,7 @@
 #include <ATen/cuda/detail/TensorInfo.cuh>
 
 #include <c10/macros/Macros.h>
+#include <c10/util/irange.h>
 
 namespace at::native {
 
@@ -51,9 +52,9 @@ __global__ void vol2col_kernel(
         ((channel_out * depth_col + t_out) * height_col + h_out) * width_col +
         w_out;
     data_vol += ((channel_in * depth + t_in) * height + h_in) * width + w_in;
-    for (int i = 0; i < ksize_t; ++i) {
-      for (int j = 0; j < ksize_h; ++j) {
-        for (int k = 0; k < ksize_w; ++k) {
+    for (const auto i : c10::irange(ksize_t)) {
+      for (const auto j : c10::irange(ksize_h)) {
+        for (const auto k : c10::irange(ksize_w)) {
           auto t = t_in + i * dilation_t;
           auto h = h_in + j * dilation_h;
           auto w = w_in + k * dilation_w;
@@ -168,9 +169,9 @@ __global__ void vol2im_kernel(
         (t_im < kernel_extent_t) ? 0 : (t_im - kernel_extent_t) / stride_t + 1;
     const auto t_col_end = std::min(t_im / stride_t + 1, depth_col);
     // TODO: use LCM of stride and dilation to avoid unnecessary loops
-    for (unsigned t_col = t_col_start; t_col < t_col_end; t_col += 1) {
-      for (unsigned h_col = h_col_start; h_col < h_col_end; h_col += 1) {
-        for (unsigned w_col = w_col_start; w_col < w_col_end; w_col += 1) {
+    for (const auto t_col : c10::irange(t_col_start, t_col_end)) {
+      for (const auto h_col : c10::irange(h_col_start, h_col_end)) {
+        for (const auto w_col : c10::irange(w_col_start, w_col_end)) {
           uint64_t t_k = (t_im - t_col * stride_t);
           uint64_t h_k = (h_im - h_col * stride_h);
           uint64_t w_k = (w_im - w_col * stride_w);

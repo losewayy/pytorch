@@ -1,6 +1,7 @@
 #pragma once
 #include <ATen/OpMathType.h>
 #include <ATen/native/ForeachUtils.h>
+#include <c10/util/irange.h>
 #include <ATen/native/cuda/DeviceAddCmulCdiv.cuh>
 #include <ATen/native/cuda/MultiTensorApply.cuh>
 #include <ATen/native/cuda/Pow.cuh>
@@ -27,7 +28,7 @@ __device__ bool init_args(
     const int64_t chunk_size,
     const int64_t tensor_loc) {
   bool all_aligned = true;
-  for (int i = 0; i < depth; i++) {
+  for (const auto i : c10::irange(depth)) {
     args[i] = (T*)tl.addresses[i][tensor_loc];
     args[i] += chunk_idx * chunk_size;
 
@@ -47,7 +48,7 @@ __device__ bool init_args(
     const int64_t chunk_size,
     const int64_t tensor_loc) {
   bool all_aligned = true;
-  for (int i = 0; i < depth; i++) {
+  for (const auto i : c10::irange(depth)) {
     args[i] = (T*)tl.addresses[i][tensor_loc];
     args[i] += chunk_idx * chunk_size;
 
@@ -66,7 +67,7 @@ __device__ bool init_args(
     const int64_t chunk_size,
     const int64_t tensor_loc) {
   bool all_aligned = true;
-  for (int i = 0; i < depth; i++) {
+  for (const auto i : c10::irange(depth)) {
     args[i] = (T*)tl.addresses[i][tensor_loc];
     args[i] += chunk_idx * chunk_size;
 
@@ -115,7 +116,7 @@ __device__ void load_args(
 #pragma unroll
   for (int ii = 0; ii < kILP; ii++) {
     const auto i = i_start + threadIdx.x + ii * blockDim.x;
-    for (int r_index = 0; r_index < depth; r_index++) {
+    for (const auto r_index : c10::irange(depth)) {
       r_args[r_index][ii] = 0;
       if (i < n && i < chunk_size) {
         r_args[r_index][ii] = args[r_index][i];

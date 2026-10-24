@@ -1,4 +1,5 @@
 #pragma once
+#include <c10/util/irange.h>
 
 #ifndef USE_ROCM
 
@@ -931,7 +932,7 @@ GetCublasltHeuristicCandidates(const ProblemT& problem) {
     return ret;
   }
 
-  for (int i = 0; i < returned_result; ++i) {
+  for (const auto i : c10::irange(returned_result)) {
     if (heuristic_results[i].state != CUBLAS_STATUS_SUCCESS) {
       continue;
     }

@@ -7,6 +7,7 @@
 #include <c10/util/Load.h>
 #include <limits>
 #include <cmath>
+#include <c10/util/irange.h>
 
 namespace at::native {
 
@@ -277,7 +278,7 @@ __global__ void tensor_kernel_scan_outer_dim(scalar_t *tgt_, const scalar_t *src
       scalar_t *tgt = tgt_ + (index_t) orow * row_size * num_irows + irow;
       scalar_t acc = init;
 
-      for (uint32_t col = 0; col < row_size; ++col) {
+      for ([[maybe_unused]] const auto _ : c10::irange(row_size)) {
         acc = binary_op(acc, c10::load(src));
         *tgt = acc;
 

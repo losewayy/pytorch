@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include <c10/util/irange.h>
 #include <cstdint>
 
 namespace at::cuda {
@@ -50,7 +51,7 @@ __device__ __forceinline__ uint4 philox_4x32(
   constexpr uint32_t kPhilox10B = 0xBB67AE85;
 
   #pragma unroll
-  for (int i = 0; i < N_ROUNDS - 1; i++) {
+  for ([[maybe_unused]] const auto _ : c10::irange(N_ROUNDS - 1)) {
     ctr = philox_round(ctr, key);
     key.x += kPhilox10A;
     key.y += kPhilox10B;

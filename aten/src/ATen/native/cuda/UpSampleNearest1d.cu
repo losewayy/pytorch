@@ -7,6 +7,7 @@
 #include <ATen/Utils.h>
 #include <ATen/cuda/CUDAContext.h>
 #include <ATen/native/cuda/UpSample.cuh>
+#include <c10/util/irange.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/Functions.h>
@@ -91,7 +92,7 @@ __global__ void upsample_nearest1d_backward_out_frame(
   for (int b = 0; b < dim_b; b++) {
     accscalar_t grad = 0;
     int src_idx = b * dim_c * src_dim_w + c * src_dim_w + src_x;
-    for (int x = src_x; x < src_x_up; x++) {
+    for ([[maybe_unused]] const auto _ : c10::irange(src_x, src_x_up)) {
       grad += grad_o[src_idx++];
     }
     grad_i[dst_idx] = grad;

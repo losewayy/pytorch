@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <ATen/cuda/detail/IndexUtils.cuh>
 #include <ATen/cuda/detail/TensorInfo.cuh>
+#include <c10/util/irange.h>
 
 namespace at::native {
 
@@ -134,7 +135,7 @@ void run_launcher(
   int collapse_indices_dim = indices_info.collapseDims(dim);
 
   int64_t num_slices = 1;
-  for (int i = 0; i < self_info.dims; ++i) {
+  for (const auto i : c10::irange(self_info.dims)) {
     num_slices *= self_info.sizes[i];
   }
 

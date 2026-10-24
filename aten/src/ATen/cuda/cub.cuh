@@ -18,6 +18,7 @@
 #include <ATen/cuda/Exceptions.h>
 #include <c10/cuda/CUDACachingAllocator.h>
 #include <c10/cuda/CUDAStream.h>
+#include <c10/util/irange.h>
 
 // handle the temporary storage and 'twice' calls for cub API
 #define CUB_WRAPPER(func, ...) do {                                       \
@@ -336,13 +337,13 @@ __global__ void final_scan_kernel(const T* d_in, T* d_out, T* agg, int64_t nelem
   // Per-thread tile data
   T data[ITEMS_PER_THREAD];
 
-  for (int i=0; i<iters_per_cta; i++){
+  for ([[maybe_unused]] const auto _ : c10::irange(iters_per_cta)){
   // Load items into a blocked arrangement
     if (remaining >= BLOCK_THREADS * ITEMS_PER_THREAD) {
       BlockLoadT(temp_storage.load).Load(d_in, data);
     } else {
        #pragma unroll
-       for (int j=0; j<ITEMS_PER_THREAD; j++) {
+       for (const auto j : c10::irange(ITEMS_PER_THREAD)) {
          data[j] = 0;
        }
        BlockLoadT(temp_storage.load).Load(d_in, data, remaining);
@@ -404,7 +405,7 @@ __global__ void calc_block_sums(const T * d_in, aggT * agg, int64_t nelem, int i
     aggT agg_val = 0;
     TransformFunctor<T, aggT, nonzero> transform_functor;
     auto iter_in = ATEN_CUB_TRANSFORM_ITERATOR(aggT, TransformFunctor<T, aggT, nonzero>, const T*)(d_in, transform_functor);
-    for (int i=0; i<iters_per_cta; i++){
+    for ([[maybe_unused]] const auto _ : c10::irange(iters_per_cta)){
       if (remaining >= BLOCK_THREADS * ITEMS_PER_THREAD) {
         BlockLoadT(temp_storage.load).Load(iter_in, data);
         __syncthreads();

@@ -24,6 +24,7 @@
 #include <ATen/native/CanUse32BitIndexMath.h>
 
 #include <algorithm>
+#include <c10/util/irange.h>
 #include <cfloat>
 #include <cmath>
 
@@ -284,8 +285,8 @@ namespace {
 
         // loop on input: hierarchy h->w->c, use shared memory here hopefully
         // would not stall global memory read;
-        for (index_t ih = istartH; ih < iendH; ih++) {
-          for (index_t iw = istartW; iw < iendW; iw++) {
+        for (const auto ih : c10::irange(istartH, iendH)) {
+          for (const auto iw : c10::irange(istartW, iendW)) {
             int cached_index = threadIdx.x;
             const scalar_t *ptr_input = input + ih*istrideH + iw*istrideW;
             for (index_t c = channel_offset;
@@ -405,8 +406,8 @@ namespace {
       for (index_t iw = istartW; iw < iendW; iw+=blockDim.y) {
         // loop on output: hierarchy h->w->c, so we could reuse weight factor f
         // because it remains the same for given oh & ow
-        for(index_t oh = ostartH; oh < oendH; ++oh) {
-          for(index_t ow = ostartW_cached[iw]; ow < oendW_cached[iw]; ++ow) {
+        for(const auto oh : c10::irange(ostartH, oendH)) {
+          for(const auto ow : c10::irange(ostartW_cached[iw], oendW_cached[iw])) {
             scalar_t f = r_kW_cached[ow] * r_kH_cached[oh];
             const scalar_t* ptr_gradOutput = gradOutput + oh*ostrideH + ow*ostrideW;
             int cached_index = threadIdx.x;

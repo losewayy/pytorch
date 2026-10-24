@@ -4,6 +4,7 @@
 #include <ATen/cuda/CUDAApplyUtils.cuh>
 #include <ATen/native/cuda/thread_constants.h>
 #include <c10/macros/Macros.h>
+#include <c10/util/irange.h>
 
 namespace at::native::apply {
 
@@ -54,7 +55,7 @@ __global__ void sparseElementwiseKernel(
        linearId < nnz;
        linearId += gridDim.x) {
     IndexType index = 0;
-    for (IndexType d = 0; d < indices.sizes[0]; d++) {
+    for (const auto d : c10::irange(indices.sizes[0])) {
       index = dense.sizes[d] * index + indices.data[d * ind_skip + linearId * ind_nnz_skip];
     }
     Real *dst = dense.data + index * value_size;
@@ -82,7 +83,7 @@ __global__ void sparseElementwiseKernelScalar(
        linearId < nnz;
        linearId += gridDim.x * blockDim.x) {
     IndexType index = 0;
-    for (IndexType d = 0; d < indices.sizes[0]; d++) {
+    for (const auto d : c10::irange(indices.sizes[0])) {
       index = dense.sizes[d] * index + indices.data[d * ind_skip + linearId * ind_nnz_skip];
     }
     op(dense.data + index, values.data + linearId * value_skip);
@@ -210,14 +211,14 @@ __global__ void coalesceValuesKernel(
 #endif
     Acctype tmp[SZ];
     #pragma unroll
-    for (int ii = 0; ii < SZ; ii++) {
+    for (const auto ii : c10::irange(SZ)) {
       tmp[ii] = 0;
     }
-    for (int row = begin; row < end; row++) {
+    for (const auto row : c10::irange(begin, end)) {
       const int valueRow = ((int) value_indices[row]) * stride;
 
       #pragma unroll
-      for (int ii = 0; ii < SZ; ii++)
+      for (const auto ii : c10::irange(SZ))
       {
         int featureDim = startFeature + ii * C10_WARP_SIZE;
         if (featureDim < stride)
@@ -227,7 +228,7 @@ __global__ void coalesceValuesKernel(
       }
     }
     #pragma unroll
-    for (int ii = 0; ii < SZ; ii++)
+    for (const auto ii : c10::irange(SZ))
     {
       int featureDim = startFeature + ii * C10_WARP_SIZE;
       if (featureDim < stride)
@@ -268,14 +269,14 @@ __global__ void coalesceValuesKernel(
 #endif
     bool tmp[SZ];
     #pragma unroll
-    for (int ii = 0; ii < SZ; ii++) {
+    for (const auto ii : c10::irange(SZ)) {
       tmp[ii] = 0;
     }
-    for (int row = begin; row < end; row++) {
+    for (const auto row : c10::irange(begin, end)) {
       const int valueRow = ((int) value_indices[row]) * stride;
 
       #pragma unroll
-      for (int ii = 0; ii < SZ; ii++)
+      for (const auto ii : c10::irange(SZ))
       {
         int featureDim = startFeature + ii * C10_WARP_SIZE;
         if (featureDim < stride)
@@ -285,7 +286,7 @@ __global__ void coalesceValuesKernel(
       }
     }
     #pragma unroll
-    for (int ii = 0; ii < SZ; ii++)
+    for (const auto ii : c10::irange(SZ))
     {
       int featureDim = startFeature + ii * C10_WARP_SIZE;
       if (featureDim < stride)

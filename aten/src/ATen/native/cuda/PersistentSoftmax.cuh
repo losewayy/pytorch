@@ -7,6 +7,7 @@
 #include <c10/macros/Macros.h>
 
 #include <ATen/cuda/DeviceUtils.cuh>
+#include <c10/util/irange.h>
 
 namespace {
 
@@ -36,7 +37,7 @@ __device__ __forceinline__ void warp_reduce(acc_t* sum) {
     #pragma unroll
     for (int offset = WARP_SIZE / 2; offset > 0; offset /= 2) {
         #pragma unroll
-        for (int i = 0;  i < WARP_BATCH;  ++i) {
+        for (const auto i : c10::irange(WARP_BATCH)) {
             acc_t b = WARP_SHFL_XOR(sum[i], offset, WARP_SIZE);
             sum[i] = r(sum[i], b);
         }
@@ -100,9 +101,9 @@ __global__ void softmax_warp_forward(output_t *dst, const input_t *src, int batc
 
     // load data from global memory
     acc_t elements[WARP_BATCH][WARP_ITERATIONS];
-    for (int i = 0;  i < WARP_BATCH;  ++i) {
+    for (const auto i : c10::irange(WARP_BATCH)) {
         int batch_element_count = (i >= local_batches) ? 0 : element_count;
-        for (int it = 0;  it < WARP_ITERATIONS;  ++it) {
+        for (const auto it : c10::irange(WARP_ITERATIONS)) {
             int element_index = local_idx + it * WARP_SIZE;
             if (element_index < batch_element_count) {
                 elements[i][it] = src[i*element_count+it*WARP_SIZE];
@@ -115,12 +116,12 @@ __global__ void softmax_warp_forward(output_t *dst, const input_t *src, int batc
     // compute max_value
     acc_t max_value[WARP_BATCH];
     #pragma unroll
-    for (int i = 0;  i < WARP_BATCH;  ++i) {
+    for (const auto i : c10::irange(WARP_BATCH)) {
         int batch_element_count = (i >= local_batches) ? 0 : element_count;
         bool is_meaningful_max = false;
         max_value[i] = elements[i][0];
         #pragma unroll
-        for (int it = 0;  it < WARP_ITERATIONS;  ++it) {
+        for (const auto it : c10::irange(WARP_ITERATIONS)) {
             if (is_masked) {
                 int idx = it*WARP_SIZE;
                 if ((idx + local_idx) < batch_element_count) {
@@ -146,10 +147,10 @@ __global__ void softmax_warp_forward(output_t *dst, const input_t *src, int batc
 
     acc_t sum[WARP_BATCH] { 0.0f };
     #pragma unroll
-    for (int i = 0;  i < WARP_BATCH;  ++i) {
+    for (const auto i : c10::irange(WARP_BATCH)) {
         int batch_element_count = (i >= local_batches) ? 0 : element_count;
         #pragma unroll
-        for (int it = 0;  it < WARP_ITERATIONS;  ++it) {
+        for (const auto it : c10::irange(WARP_ITERATIONS)) {
             if (!is_masked) {
                 if (is_log_softmax) {
                     sum[i] += std::exp(elements[i][it] - max_value[i]);
@@ -189,12 +190,12 @@ __global__ void softmax_warp_forward(output_t *dst, const input_t *src, int batc
 
     // store result
     #pragma unroll
-    for (int i = 0;  i < WARP_BATCH;  ++i) {
+    for (const auto i : c10::irange(WARP_BATCH)) {
         if (i >= local_batches)
             break;
         if (is_log_softmax) sum[i] = std::log(sum[i]);
         #pragma unroll
-        for (int it = 0;  it < WARP_ITERATIONS;  ++it) {
+        for (const auto it : c10::irange(WARP_ITERATIONS)) {
             int element_index = local_idx + it * WARP_SIZE;
             if (element_index < element_count) {
                 if (is_log_softmax) {
@@ -248,9 +249,9 @@ __global__ void softmax_warp_backward(output_t *gradInput, const input_t *grad, 
     // load data from global memory
     acc_t grad_reg[WARP_BATCH][WARP_ITERATIONS];
     acc_t output_reg[WARP_BATCH][WARP_ITERATIONS];
-    for (int i = 0;  i < WARP_BATCH;  ++i) {
+    for (const auto i : c10::irange(WARP_BATCH)) {
         int batch_element_count = (i >= local_batches) ? 0 : element_count;
-        for (int it = 0;  it < WARP_ITERATIONS;  ++it) {
+        for (const auto it : c10::irange(WARP_ITERATIONS)) {
             int element_index = local_idx + it * WARP_SIZE;
             if (element_index < batch_element_count) {
                 grad_reg[i][it] = grad[i*element_count+it*WARP_SIZE];
@@ -264,9 +265,9 @@ __global__ void softmax_warp_backward(output_t *gradInput, const input_t *grad, 
 
     acc_t sum[WARP_BATCH] { 0.0f };
     #pragma unroll
-    for (int i = 0;  i < WARP_BATCH;  ++i) {
+    for (const auto i : c10::irange(WARP_BATCH)) {
         #pragma unroll
-        for (int it = 0;  it < WARP_ITERATIONS;  ++it) {
+        for (const auto it : c10::irange(WARP_ITERATIONS)) {
             if (!is_masked || !mask[i*element_count+it*WARP_SIZE]) {
                 sum[i] += grad_reg[i][it];
             }
@@ -276,11 +277,11 @@ __global__ void softmax_warp_backward(output_t *gradInput, const input_t *grad, 
 
     // store result
     #pragma unroll
-    for (int i = 0;  i < WARP_BATCH;  ++i) {
+    for (const auto i : c10::irange(WARP_BATCH)) {
         if (i >= local_batches)
             break;
         #pragma unroll
-        for (int it = 0;  it < WARP_ITERATIONS;  ++it) {
+        for (const auto it : c10::irange(WARP_ITERATIONS)) {
             int element_index = local_idx + it * WARP_SIZE;
             if (element_index < element_count) {
                 if (is_masked && mask[i*element_count+it*WARP_SIZE]) {

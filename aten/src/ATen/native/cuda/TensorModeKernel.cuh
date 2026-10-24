@@ -4,6 +4,7 @@
 #include <ATen/native/cuda/Loops.cuh>
 #include <ATen/native/cuda/SortingCommon.cuh>
 #include <ATen/native/cuda/block_reduce.cuh>
+#include <c10/util/irange.h>
 
 namespace at::native {
 
@@ -83,7 +84,7 @@ __device__ T reduceBlockWithNThreadLocalReductions(
   T local = offset < numVals ? threadVals[0] : init;
 
 #pragma unroll
-  for (int i = 1; i < N; ++i) {
+  for (const auto i : c10::irange(1, N)) {
     ++offset;
     T next = offset < numVals ? threadVals[i] : init;
     local = reduceOp.combine(local, next);

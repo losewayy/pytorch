@@ -3,6 +3,7 @@
 #include <ATen/native/cuda/UpSample.cuh>
 #include <ATen/native/GridSamplerUtils.h>
 
+#include <c10/util/irange.h>
 #include <limits>
 
 namespace at::native {
@@ -397,7 +398,7 @@ void resolve_cubic_taps(
   const scalar_t index_limit =
       static_cast<scalar_t>(std::numeric_limits<index_t>::max());
   #pragma unroll 4
-  for (int i = 0; i < 4; ++i) {
+  for (const auto i : c10::irange(4)) {
     const scalar_t tap = compute_coordinates_sized(
         base - 1 + i, size, padding_mode, align_corners);
     // a tap that is not finite, or past the index type, fails before the cast

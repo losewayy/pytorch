@@ -1,5 +1,6 @@
 #pragma once
 #include <ATen/core/TensorAccessor.h>
+#include <c10/util/irange.h>
 #include <torch/headeronly/cuda/Atomic.h>
 #include <torch/headeronly/cuda/KernelUtils.h>
 
@@ -51,7 +52,7 @@ __device__ __forceinline__ void fastAtomicAdd(
   index_t offset = 0;
   index_t memory_span = 1;
 #pragma unroll
-  for (size_t d = 0; d < N; ++d) {
+  for (const auto d : c10::irange(N)) {
     offset += index[d] * accessor.stride(d);
     memory_span += (accessor.size(d) - 1) * accessor.stride(d);
   }

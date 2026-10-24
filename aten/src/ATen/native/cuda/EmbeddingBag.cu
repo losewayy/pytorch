@@ -31,6 +31,7 @@
 #include <ATen/native/cuda/block_reduce.cuh>
 
 #include <c10/macros/Macros.h>
+#include <c10/util/irange.h>
 
 namespace at::native {
 
@@ -81,13 +82,13 @@ __global__ void EmbeddingBag_updateOutputKernel_max(
       // Separate validation loop reduces register pressure in the main loop below.
       // No early exit (break) on invalid input as benchmarking shows it degrades performance.
       bool has_invalid_index = false;
-      for (int64_t emb = begin; emb < end; emb++) {
+      for (const auto emb : c10::irange(begin, end)) {
         index_t input_idx = input[emb];
         has_invalid_index = has_invalid_index || (input_idx < 0 || input_idx >= numRows);
       }
       CUDA_KERNEL_ASSERT(!has_invalid_index && "Invalid input index in EmbeddingBag: index out of range [0, numRows)");
 
-      for (int64_t emb = begin; emb < end; emb++) {
+      for (const auto emb : c10::irange(begin, end)) {
         bool pad = (input[emb] == padding_idx);
         const int64_t weightRow = input[emb] * weight_stride0;
         scalar_t weightValue = weightFeat[weightRow];
@@ -141,13 +142,13 @@ __global__ void EmbeddingBag_updateOutputKernel_sum_mean(
       // Separate validation loop reduces register pressure in the main loop below.
       // No early exit (break) on invalid input as benchmarking shows it degrades performance.
       bool has_invalid_index = false;
-      for (int64_t emb = begin; emb < end; emb++) {
+      for (const auto emb : c10::irange(begin, end)) {
         index_t input_idx = input[emb];
         has_invalid_index = has_invalid_index || (input_idx < 0 || input_idx >= numRows);
       }
       CUDA_KERNEL_ASSERT(!has_invalid_index && "Invalid input index in EmbeddingBag: index out of range [0, numRows)");
 
-      for (int64_t emb = begin; emb < end; emb++) {
+      for (const auto emb : c10::irange(begin, end)) {
         index_t input_idx = input[emb];
         bool pad = (input_idx == padding_idx);
         const int64_t weightRow = input_idx * weight_stride0;

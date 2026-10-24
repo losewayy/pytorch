@@ -40,6 +40,7 @@
 #include <c10/core/ScalarType.h>
 #include <c10/macros/Macros.h>
 #include <c10/util/TypeCast.h>
+#include <c10/util/irange.h>
 
 #ifdef __NVCC__
 #define ASSERT_HOST_DEVICE_LAMBDA(type)                       \
@@ -589,7 +590,7 @@ __global__ void elementwise_kernel(int N, func_t f) {
   int nv = nt * vt;
   int idx = nv * blockIdx.x + tid;
 #pragma unroll
-  for (int i = 0; i < vt; i++) {
+  for ([[maybe_unused]] const auto _ : c10::irange(vt)) {
     if (idx < N) {
       f(idx);
       idx += nt;
@@ -709,7 +710,7 @@ void gpu_kernel_impl_nocast(TensorIteratorBase& iter, const func_t& f) {
   TORCH_INTERNAL_ASSERT(iter.noutputs() == 1);
 
   std::array<char*, ntensors> data;
-  for (int i = 0; i < ntensors; i++) {
+  for (const auto i : c10::irange(ntensors)) {
     data[i] = (char*)iter.data_ptr(i);
   }
 
@@ -1028,7 +1029,7 @@ void gpu_kernel_impl(TensorIteratorBase& iter, const func_t& f) {
   TORCH_INTERNAL_ASSERT(iter.noutputs() == 1);
 
   std::array<char*, ntensors> data;
-  for (int i = 0; i < ntensors; i++) {
+  for (const auto i : c10::irange(ntensors)) {
     data[i] = (char*)iter.data_ptr(i);
   }
 
@@ -1124,7 +1125,7 @@ void gpu_kernel_impl(TensorIteratorBase& iter, const func_t& f) {
 #endif
   } else {
     std::array<ScalarType, ntensors> dtypes;
-    for (int i = 0; i < ntensors; i++) {
+    for (const auto i : c10::irange(ntensors)) {
       dtypes[i] = iter.dtype(i);
     }
     auto offset_calc = ::make_offset_calculator<traits::arity + 1>(iter);

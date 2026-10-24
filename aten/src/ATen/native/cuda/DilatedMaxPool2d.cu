@@ -12,6 +12,7 @@
 #include <ATen/cuda/detail/KernelUtils.h>
 #include <c10/macros/Macros.h>
 #include <ATen/native/cuda/LaunchUtils.h>
+#include <c10/util/irange.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/NativeFunctions.h>
@@ -303,8 +304,8 @@ __global__ void max_pool_backward_nchw(
       for (index_t c = blockIdx.z; c < channels; c += gridDim.z) {
         accscalar_t gradient = accscalar_t(0);
         index_t offset = (n * channels + c) * pooled_height * pooled_width;
-        for (index_t ph = phstart; ph < phend; ++ph) {
-          for (index_t pw = pwstart; pw < pwend; ++pw) {
+        for (const auto ph : c10::irange(phstart, phend)) {
+          for (const auto pw : c10::irange(pwstart, pwend)) {
             if (top_mask[ph * pooled_width + pw + offset] == h * width + w) {
               gradient += static_cast<accscalar_t>(top_diff[ph * pooled_width + pw + offset]);
             }
@@ -409,8 +410,8 @@ __global__ void max_pool_backward_nhwc(const scalar_t* top_diff,
 #undef _MAXw
 #endif
 
-        for(int oh = phstart; oh < phend; ++oh) {
-          for(int ow = pwstart; ow < pwend; ++ow) {
+        for(const auto oh : c10::irange(phstart, phend)) {
+          for(const auto ow : c10::irange(pwstart, pwend)) {
             int cached_index = threadIdx.x;
             const int64_t* ptr_top_mask = top_mask + oh * out_stride_h + ow * out_stride_w;
             for (int c = channel_offset; c < channels; c += blockDim.x*kernel_stride_C) {

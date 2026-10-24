@@ -3,6 +3,7 @@
 #include <ATen/core/TensorBase.h>
 #include <ATen/cuda/detail/TensorInfo.cuh>
 #include <ATen/native/CanUse32BitIndexMath.h>
+#include <c10/util/irange.h>
 
 namespace at::cuda::detail {
 
@@ -16,7 +17,7 @@ getTensorInfo(const at::TensorBase &t) {
   IndexType st[MAX_TENSORINFO_DIMS];
 
   int dims = t.dim();
-  for (int i = 0; i < dims; ++i) {
+  for (const auto i : c10::irange(dims)) {
     sz[i] = t.size(i);
     st[i] = t.stride(i);
   }

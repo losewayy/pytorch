@@ -12,6 +12,7 @@
 #include <ATen/native/cuda/LaunchUtils.h>
 #include <c10/macros/Macros.h>
 #include <utility>
+#include <c10/util/irange.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/Functions.h>
@@ -479,7 +480,7 @@ __global__ void batch_norm_reduce_statistics_kernel(
     accscalar_t avg = 0;
     accscalar_t var_n = 0;
     index_t n = 0;
-    for (int j = 0; j < world_size; j++) {
+    for (const auto j : c10::irange(world_size)) {
       scalar_t count = counts[j];
       accscalar_t m = vec_mean[j][i];
       accscalar_t v = accscalar_t(1.0) / (vec_invstd[j][i]);
@@ -587,7 +588,7 @@ __global__ void batch_norm_backward_elemt_kernel(
     GenericPackedTensorAccessor<input_scalar_t, 3, DefaultPtrTraits, index_t> grad_input,
     const int* __restrict__ numel, const int world_size) {
   int64_t total_numel = 0;
-  for (int i = 0; i < world_size; i ++) {
+  for (const auto i : c10::irange(world_size)) {
     total_numel += numel[i];
   }
 
@@ -992,7 +993,7 @@ batch_norm_collect_statistics_channels_last_kernel(
   int count[PARALLEL_LOADS];
 
 #pragma unroll
-  for (int i = 0; i < PARALLEL_LOADS; i++) {
+  for (const auto i : c10::irange(PARALLEL_LOADS)) {
     x_mean[i] = accscalar_t(0);
     m_2_n[i] = accscalar_t(0);
     count[i] = accscalar_t(0);
@@ -1010,14 +1011,14 @@ batch_norm_collect_statistics_channels_last_kernel(
   int address_base = m_offset * stride + c_offset;
   int address_increment = inner_loop_stride * stride;
 
-  for (int i = 0; i < loop_count; i++) {
+  for ([[maybe_unused]] const auto _ : c10::irange(loop_count)) {
     accscalar_t x_math[PARALLEL_LOADS];
     accscalar_t x_count_inv[PARALLEL_LOADS];
     accscalar_t is_valid[PARALLEL_LOADS];
 
     // load multiple data in
 #pragma unroll
-    for (int j = 0; j < PARALLEL_LOADS; j++) {
+    for (const auto j : c10::irange(PARALLEL_LOADS)) {
       if (c_offset < stride && m_offset < reduction_size) {
         x_math[j] = input[address_base];
         count[j]++;
@@ -1034,7 +1035,7 @@ batch_norm_collect_statistics_channels_last_kernel(
 
     // calculate mean/m2n with welford
 #pragma unroll
-    for (int j = 0; j < PARALLEL_LOADS; j++) {
+    for (const auto j : c10::irange(PARALLEL_LOADS)) {
       accscalar_t delta0 = x_math[j] - x_mean[j];
       x_mean[j] += delta0 * x_count_inv[j];
       accscalar_t delta1 = x_math[j] - x_mean[j];
@@ -1044,7 +1045,7 @@ batch_norm_collect_statistics_channels_last_kernel(
 
   // thread reduction to accumulate mean/m_2_n/count between PARALLEL_LOADS
 #pragma unroll
-  for (int j = 1; j < PARALLEL_LOADS; j++) {
+  for (const auto j : c10::irange(1, PARALLEL_LOADS)) {
     welford_merge_element(count[0], x_mean[0], m_2_n[0], count[j], x_mean[j], m_2_n[j]);
   }
 
@@ -1163,9 +1164,9 @@ __global__ void batch_norm_transform_input_channels_last_kernel(
   int address_base = m_offset * stride + c_offset;
   int address_increment = inner_loop_stride * stride;
 
-  for (int i = 0; i < loop_count; i++) {
+  for ([[maybe_unused]] const auto _ : c10::irange(loop_count)) {
 #pragma unroll
-    for (int j = 0; j < PARALLEL_LOADS; j++) {
+    for ([[maybe_unused]] const auto _ : c10::irange(PARALLEL_LOADS)) {
       if (c_offset < stride && m_offset < reduction_size) {
         auto tmp = w_c * (static_cast<accscalar_t>(input[address_base]) - m_c ) * inv_std_c + s_c;
         if (z != nullptr) {
@@ -1229,7 +1230,7 @@ __global__ void batch_norm_backward_reduce_channels_last_kernel(
   accscalar_t sum_dy_xmu[PARALLEL_LOADS];
 
 #pragma unroll
-  for (int i = 0; i < PARALLEL_LOADS; i++) {
+  for (const auto i : c10::irange(PARALLEL_LOADS)) {
     sum_dy[i] = accscalar_t(0);
     sum_dy_xmu[i] = accscalar_t(0);
   }
@@ -1253,13 +1254,13 @@ __global__ void batch_norm_backward_reduce_channels_last_kernel(
   auto r_mean = mean[c_offset];
   auto factor = inv_std[c_offset];
 
-  for (int i = 0; i < loop_count; i++) {
+  for ([[maybe_unused]] const auto _ : c10::irange(loop_count)) {
     accscalar_t x_input[PARALLEL_LOADS];
     accscalar_t x_grad_output[PARALLEL_LOADS];
 
     // load multiple data in
 #pragma unroll
-    for (int j = 0; j < PARALLEL_LOADS; j++) {
+    for (const auto j : c10::irange(PARALLEL_LOADS)) {
       if (c_offset < stride && m_offset < reduction_size) {
         x_input[j] = input[address_base];
         x_grad_output[j] = grad_output[address_base];
@@ -1273,7 +1274,7 @@ __global__ void batch_norm_backward_reduce_channels_last_kernel(
 
     // calculate sum_dy / sum_dy_xmu
 #pragma unroll
-    for (int j = 0; j < PARALLEL_LOADS; j++) {
+    for (const auto j : c10::irange(PARALLEL_LOADS)) {
       sum_dy[j] += x_grad_output[j];
       sum_dy_xmu[j] += x_grad_output[j] * (x_input[j] - r_mean);
     }
@@ -1281,7 +1282,7 @@ __global__ void batch_norm_backward_reduce_channels_last_kernel(
 
   // thread reduction to accumulate sum_dy / sum_dy_xmu between PARALLEL_LOADS
 #pragma unroll
-  for (int j = 1; j < PARALLEL_LOADS; j++) {
+  for (const auto j : c10::irange(1, PARALLEL_LOADS)) {
     sum_dy[0] += sum_dy[j];
     sum_dy_xmu[0] += sum_dy_xmu[j];
   }
@@ -1410,9 +1411,9 @@ __device__ __forceinline__ void batch_norm_backward_elemt_channels_last_kernel_i
   int address_base = m_offset * stride + c_offset;
   int address_increment = inner_loop_stride * stride;
 
-  for (int i = 0; i < loop_count; i++) {
+  for ([[maybe_unused]] const auto _ : c10::irange(loop_count)) {
 #pragma unroll
-    for (int j = 0; j < PARALLEL_LOADS; j++) {
+    for ([[maybe_unused]] const auto _ : c10::irange(PARALLEL_LOADS)) {
       if (c_offset < stride && m_offset < reduction_size) {
         grad_input[address_base] = static_cast<scalar_t>(
             (static_cast<accscalar_t>(grad_output[address_base]) - m_dy_c -

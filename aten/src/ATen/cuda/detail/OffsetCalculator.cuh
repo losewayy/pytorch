@@ -6,6 +6,7 @@
 #include <c10/macros/Macros.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/cuda/detail/IntegerDivider.cuh>
+#include <c10/util/irange.h>
 
 // If element_sizes is nullptr, then the strides will be in bytes, otherwise
 // the strides will be in # of elements.
@@ -34,9 +35,9 @@ struct OffsetCalculator {
   // the strides will be in # of elements.
   OffsetCalculator(int dims, const int64_t* sizes, const int64_t* const* strides, const int64_t* element_sizes=nullptr) : dims(dims) {
     TORCH_CHECK(dims <= MAX_DIMS, "tensor has too many (>", MAX_DIMS, ") dims");
-    for (int i=0; i < dims; i++){
+    for (const auto i : c10::irange(dims)){
       sizes_[i] = at::cuda::detail::IntDivider<index_t>(sizes[i]);
-      for (int arg = 0; arg < NARGS; arg++) {
+      for (const auto arg : c10::irange(NARGS)) {
         int64_t element_size = (element_sizes == nullptr ? 1LL : element_sizes[arg]);
         strides_[i][arg] = strides[arg][i] / element_size;
       }
@@ -50,12 +51,12 @@ struct OffsetCalculator {
     if ((dims > 0) && (dims <= 2)) {
       auto divmod = sizes_[0].divmod(linear_idx);
 #pragma unroll
-      for (int arg = 0; arg < NARGS; arg++)
+      for (const auto arg : c10::irange(NARGS))
         offsets[arg] = divmod.mod * strides_[0][arg];
       if (dims >= 2) {
         divmod = sizes_[1].divmod(divmod.div);
 #pragma unroll
-        for (int arg = 0; arg < NARGS; arg++)
+        for (const auto arg : c10::irange(NARGS))
           offsets[arg] += divmod.mod * strides_[1][arg];
       }
       // [...]
@@ -64,12 +65,12 @@ struct OffsetCalculator {
 #endif
 
     #pragma unroll
-    for (int arg = 0; arg < NARGS; arg++) {
+    for (const auto arg : c10::irange(NARGS)) {
       offsets[arg] = 0;
     }
 
     #pragma unroll
-    for (int dim = 0; dim < MAX_DIMS; ++dim) {
+    for (const auto dim : c10::irange(MAX_DIMS)) {
       if (dim == dims) {
         break;
       }
@@ -77,7 +78,7 @@ struct OffsetCalculator {
       linear_idx = divmod.div;
 
       #pragma unroll
-      for (int arg = 0; arg < NARGS; arg++) {
+      for (const auto arg : c10::irange(NARGS)) {
         offsets[arg] += divmod.mod * strides_[dim][arg];
       }
 
@@ -102,7 +103,7 @@ struct TrivialOffsetCalculator {
   C10_HOST_DEVICE offset_type get(index_t linear_idx) const {
     offset_type offsets;
     #pragma unroll
-    for (int arg = 0; arg < NARGS; arg++) {
+    for (const auto arg : c10::irange(NARGS)) {
       offsets[arg] = linear_idx;
     }
     return offsets;
@@ -114,7 +115,7 @@ template<int N, bool signed_strides = false>
 static OffsetCalculator<N, uint32_t, signed_strides> make_offset_calculator(const at::TensorIteratorBase& iter) {
   TORCH_INTERNAL_ASSERT(N <= iter.ntensors());
   std::array<const int64_t*, N> strides;
-  for (int i = 0; i < N; i++) {
+  for (const auto i : c10::irange(N)) {
     strides[i] = iter.strides(i).data();
   }
   return OffsetCalculator<N, uint32_t, signed_strides>(iter.ndim(), iter.shape().data(), strides.data());
@@ -127,7 +128,7 @@ static OffsetCalculator<N, uint32_t, signed_strides> make_element_offset_calcula
   TORCH_INTERNAL_ASSERT(N <= iter.ntensors());
   std::array<const int64_t*, N> strides;
   std::array<int64_t, N> element_sizes;
-  for (int i = 0; i < N; i++) {
+  for (const auto i : c10::irange(N)) {
     strides[i] = iter.strides(i).data();
     element_sizes[i] = iter.element_size(i);
   }

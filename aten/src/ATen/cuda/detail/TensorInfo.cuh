@@ -1,6 +1,7 @@
 #pragma once
 
 #include <ATen/CollapseDims.h>
+#include <c10/util/irange.h>
 
 namespace at::cuda::detail {
 
@@ -50,7 +51,7 @@ TensorInfo<T, IndexType>::TensorInfo(T* p,
   dims = dim;
   TORCH_CHECK(dims < MAX_TENSORINFO_DIMS, "CUDA Tensors cannot have more than 25 dimensions");
 
-  for (int i = 0; i < dim; ++i) {
+  for (const auto i : c10::irange(dim)) {
     sizes[i] = sz[i];
     strides[i] = st[i];
   }

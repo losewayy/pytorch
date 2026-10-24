@@ -4,6 +4,7 @@
 #include <ATen/cuda/Atomic.cuh>
 #include <ATen/cuda/DeviceUtils.cuh>
 #include <type_traits>
+#include <c10/util/irange.h>
 
 namespace at::native {
 
@@ -185,7 +186,7 @@ __device__ void countRadixUsingMask(
     const scalar_t* data) {
   // Clear out per-thread counts from a previous round
 #pragma unroll
-  for (int i = 0; i < RadixSize; ++i) {
+  for (const auto i : c10::irange(RadixSize)) {
     counts[i] = 0;
   }
 
@@ -2114,7 +2115,7 @@ __device__ void radixSelect(
     } else {
       // Process in ascending order
 #pragma unroll
-      for (int i = 0; i < RADIX_SIZE; ++i) {
+      for (const auto i : c10::irange(RADIX_SIZE)) {
         index_t count = counts[i];
         if (found_unique(i, count)) {
           return;

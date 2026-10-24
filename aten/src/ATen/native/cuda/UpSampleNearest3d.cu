@@ -8,6 +8,7 @@
 #include <ATen/TensorUtils.h>
 #include <ATen/Utils.h>
 #include <ATen/cuda/CUDAContext.h>
+#include <c10/util/irange.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/Functions.h>
@@ -129,9 +130,9 @@ __global__ void upsample_nearest3d_backward_out_frame(
 
   for (int b = 0; b < dim_b; b++) {
     accscalar_t grad = 0;
-    for (int z = src_z; z < src_z_up; z++) {
-      for (int y = src_y; y < src_y_up; y++) {
-        for (int x = src_x; x < src_x_up; x++) {
+    for (const auto z : c10::irange(src_z, src_z_up)) {
+      for (const auto y : c10::irange(src_y, src_y_up)) {
+        for (const auto x : c10::irange(src_x, src_x_up)) {
           int64_t src_idx = b * dim_c * src_c_stride + c * src_c_stride +
               z * src_dim_h * src_dim_w + y * src_dim_w + x;
           grad += grad_o[src_idx];

@@ -8,6 +8,7 @@
 #include <ATen/native/cuda/SortingCommon.cuh>
 #include <ATen/native/cuda/Sort.h>
 #include <ATen/native/StridedRandomAccessor.h>
+#include <c10/util/irange.h>
 
 #if defined(USE_ROCM)
 // ROCm: WarpMergeSort available and tested on ROCm 7.0+
@@ -133,7 +134,7 @@ bitonicSortKVInPlace(at::cuda::detail::TensorInfo<K, IndexType> keys,
 
   // Load 2 values per thread into the shared workspace
   #pragma unroll
-  for (int k = 0; k < items_per_thread; ++k) {
+  for (const auto k : c10::irange(items_per_thread)) {
     auto idx = threadIdx.x + k * blockDim.x;
     bool valid = row_valid && idx < keySliceSize;
 
@@ -154,7 +155,7 @@ bitonicSortKVInPlace(at::cuda::detail::TensorInfo<K, IndexType> keys,
 
   // Store outputs
   #pragma unroll
-  for (int k = 0; k < items_per_thread; ++k) {
+  for (const auto k : c10::irange(items_per_thread)) {
     auto idx = threadIdx.x + k * blockDim.x;
     if (idx < keySliceSize) {
       keys.data[idx * keySliceStride + keyStartOffset] = sharedKeys[idx];

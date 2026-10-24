@@ -19,6 +19,7 @@
 
 #include <ATen/native/cuda/jit_utils.h>
 #include <ATen/native/cuda/KernelUtils.cuh>
+#include <c10/util/irange.h>
 
 namespace at::native {
 
@@ -425,7 +426,7 @@ struct ReduceOp {
     out_ptr_vec_t out;
 
     #pragma unroll
-    for (int i = 0; i < output_vec_size; i++) {
+    for (const auto i : c10::irange(output_vec_size)) {
       base_offsets[i] = output_calc.get(output_idx + i)[0];
       out[i] = (out_scalar_t*)((char*)dst[0] + base_offsets[i]);
     }
@@ -443,7 +444,7 @@ struct ReduceOp {
     } else if (config.should_store(output_idx)) {
       if (accumulate) {
         #pragma unroll
-        for (int i = 0; i < output_vec_size; i++) {
+        for (const auto i : c10::irange(output_vec_size)) {
           value[i] = ops.translate_idx(value[i], base_idx);
         }
       }
@@ -456,14 +457,14 @@ struct ReduceOp {
           set_results_to_output<output_vec_size>(value, base_offsets);
         } else {
           #pragma unroll
-          for (int i = 0; i < output_vec_size; i++) {
+          for (const auto i : c10::irange(output_vec_size)) {
             *(out[i]) = get_accumulated_output<can_accumulate_in_output>(out[i], value[i]);
           }
         }
       } else {
         if (accumulate) {
           #pragma unroll
-          for (int i = 0; i < output_vec_size; i++) {
+          for (const auto i : c10::irange(output_vec_size)) {
             value[i] = ops.combine((*acc)[i], value[i]);
           }
         }
@@ -526,7 +527,7 @@ struct ReduceOp {
     value_list[0] = value;
 
     #pragma unroll
-    for (int i = 1; i < input_vec_size; i++) {
+    for (const auto i : c10::irange(1, input_vec_size)) {
       value_list[i] = ident;
     }
 
@@ -551,7 +552,7 @@ struct ReduceOp {
 
     // combine accumulators
     #pragma unroll
-    for (int i = 1; i < input_vec_size; i++) {
+    for (const auto i : c10::irange(1, input_vec_size)) {
       value_list[0] = ops.combine(value_list[0], value_list[i]);
     }
     return value_list[0];
@@ -570,9 +571,9 @@ struct ReduceOp {
     arg_vec_t value_list[vt0];
 
     #pragma unroll
-    for (int i = 0; i < vt0; i++) {
+    for (const auto i : c10::irange(vt0)) {
       #pragma unroll
-      for (int j = 0; j < output_vec_size; j++) {
+      for (const auto j : c10::irange(output_vec_size)) {
         value_list[i][j] = ident;
       }
     }
@@ -621,7 +622,7 @@ struct ReduceOp {
 
     // combine accumulators
     #pragma unroll
-    for (int i = 1; i < vt0; i++) {
+    for (const auto i : c10::irange(1, vt0)) {
       #pragma unroll
       for (index_t j = 0; j < output_vec_size; j++) {
         value_list[0][j] = ops.combine(value_list[0][j], value_list[i][j]);
@@ -643,7 +644,7 @@ struct ReduceOp {
         if (threadIdx.x < offset && threadIdx.x + offset < blockDim.x) {
           args_vec_t other = shared[address_base + offset];
           #pragma unroll
-          for (int i = 0; i < output_vec_size; i++) {
+          for (const auto i : c10::irange(output_vec_size)) {
             value[i] = ops.combine(value[i], other[i]);
           }
           shared[address_base] = value;
@@ -661,7 +662,7 @@ struct ReduceOp {
     for (int offset = dim_x >> 1; offset > 0; offset >>= 1) {
     #endif
       #pragma unroll
-      for (int i = 0; i < output_vec_size; i++) {
+      for (const auto i : c10::irange(output_vec_size)) {
         arg_t other = ops.warp_shfl_down(value[i], offset);
         value[i] = ops.combine(value[i], other);
       }
@@ -679,7 +680,7 @@ struct ReduceOp {
       if (threadIdx.y < offset && threadIdx.y + offset < blockDim.y) {
         args_vec_t other = shared[config.shared_memory_offset(offset)];
         #pragma unroll
-        for (int i = 0; i < output_vec_size; i++) {
+        for (const auto i : c10::irange(output_vec_size)) {
           value[i] = ops.combine(value[i], other[i]);
         }
         shared[config.shared_memory_offset(0)] = value;
@@ -710,7 +711,7 @@ struct ReduceOp {
   ) const {
     std::array<arg_t, output_vec_size> ret;
     #pragma unroll
-    for (int i = 0; i < output_vec_size; i++) {
+    for (const auto i : c10::irange(output_vec_size)) {
       ret[i] = ops.combine(*(out[i]), value[i]);
     }
     return ret;
@@ -776,7 +777,7 @@ struct ReduceOp {
   C10_DEVICE void set_results_to_output(std::array<arg_t, output_vec_size> value, std::array<index_t, output_vec_size> base_offset) const {
     CUDA_KERNEL_ASSERT(final_output);
     #pragma unroll
-    for (int i = 0; i < output_vec_size; i++) {
+    for (const auto i : c10::irange(output_vec_size)) {
       set_results(ops.project(value[i]), base_offset[i]);
     }
   }
@@ -793,7 +794,7 @@ struct ReduceOp {
     out_ptr_vec_t out;
 
     #pragma unroll
-    for (int i = 0; i < output_vec_size; i++) {
+    for (const auto i : c10::irange(output_vec_size)) {
       base_offsets[i] = output_calc.get(output_idx + i)[0];
       out[i] = (out_scalar_t*)((char*)dst[0] + base_offsets[i]);
     }
@@ -838,7 +839,7 @@ struct ReduceOp {
           index_t idx = config.staging_memory_offset(input_offset);
           arg_vec_t next = reduce_buffer[idx];
           #pragma unroll
-          for (int i = 0; i < output_vec_size; i++) {
+          for (const auto i : c10::irange(output_vec_size)) {
             value[i] = ops.combine(value[i], next[i]);
           }
         }
@@ -874,7 +875,7 @@ struct ReduceOp {
           index_t idx = config.staging_memory_offset(input_offset);
           arg_vec_t next = reduce_buffer[idx];
           #pragma unroll
-          for (int i = 0; i < output_vec_size; i++) {
+          for (const auto i : c10::irange(output_vec_size)) {
             value[i] = ops.combine(value[i], next[i]);
           }
         }
@@ -887,7 +888,7 @@ struct ReduceOp {
       if (should_store) {
         if (accumulate) {
           #pragma unroll
-          for (int i = 0; i < output_vec_size; i++) {
+          for (const auto i : c10::irange(output_vec_size)) {
             value[i] = ops.translate_idx(value[i], base_idx);
           }
         }
@@ -900,14 +901,14 @@ struct ReduceOp {
             set_results_to_output<output_vec_size>(value, base_offsets);
           } else {
             #pragma unroll
-            for (int i = 0; i < output_vec_size; i++) {
+            for (const auto i : c10::irange(output_vec_size)) {
               *(out[i]) = get_accumulated_output<can_accumulate_in_output>(out[i], value[i]);
             }
           }
         } else {
           if (accumulate) {
             #pragma unroll
-            for (int i = 0; i < output_vec_size; i++) {
+            for (const auto i : c10::irange(output_vec_size)) {
               value[i] = ops.combine((*acc)[i], value[i]);
             }
           }

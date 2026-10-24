@@ -9,6 +9,7 @@
 #include <c10/macros/Macros.h>
 #include <ATen/native/Copy.h>
 
+#include <c10/util/irange.h>
 #include <math.h>
 
 //
@@ -157,24 +158,24 @@ inline void rearrangeDims(detail::TensorInfo<T1, IndexType>* aInfo,
 
   // Bail out if sizes do not match: we are using "deprecated pointwise
   // behavior" among tensors of different shapes but same number of elements.
-  for (int i = 1; i < numInfos; ++i) {
-    for (int j = 0; j < dims; ++j) {
+  for (const auto i : c10::irange(1, numInfos)) {
+    for (const auto j : c10::irange(dims)) {
       if (sizes[i][j] != sizes[0][j]) return;
     }
   }
 
-  for (int i = 0; i < dims - 1; ++i) {
+  for (const auto i : c10::irange(dims - 1)) {
     // No need to consider dimensions of size 1.
     if (sizes[0][i] == 1) continue;
 
-    for (int j = i + 1; j < dims; ++j) {
+    for (const auto j : c10::irange(i + 1, dims)) {
       if (sizes[0][j] == 1) continue;
 
       // Compare the relative sizes of strides between dim #i and dim #j.
       bool hasIncreasingStrides = false;
       bool hasDecreasingStrides = false;
 
-      for (int k = 0; k < numInfos; k++) {
+      for (const auto k : c10::irange(numInfos)) {
         IndexType stride_i = strides[k][i];
         IndexType stride_j = strides[k][j];
         if (stride_i < stride_j) {
@@ -185,7 +186,7 @@ inline void rearrangeDims(detail::TensorInfo<T1, IndexType>* aInfo,
       }
 
       if (hasIncreasingStrides && !hasDecreasingStrides) {
-        for (int k = 0; k < numInfos; k++) {
+        for (const auto k : c10::irange(numInfos)) {
           IndexType size = sizes[k][i];
           sizes[k][i] = sizes[k][j];
           sizes[k][j] = size;

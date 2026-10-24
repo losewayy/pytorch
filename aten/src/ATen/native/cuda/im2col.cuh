@@ -5,6 +5,7 @@
 #include <ATen/cuda/detail/KernelUtils.h>
 
 #include <c10/macros/Macros.h>
+#include <c10/util/irange.h>
 
 namespace at::native {
 
@@ -47,8 +48,8 @@ __global__ void im2col_kernel(
     dt* col = data_col + (channel_out * height_col + h_out) * width_col + w_out;
     const dt* im = data_im + (channel_in * height + h_in) * width + w_in;
 
-    for (int64_t i = 0; i < kernel_height; ++i) {
-      for (int64_t j = 0; j < kernel_width; ++j) {
+    for (const auto i : c10::irange(kernel_height)) {
+      for (const auto j : c10::irange(kernel_width)) {
         int64_t h = h_in + i * dilation_height;
         int64_t w = w_in + j * dilation_width;
         *col = (h >= 0 && w >= 0 && h < height && w < width)
@@ -135,8 +136,8 @@ __forceinline__ __device__ void col2im_device(
   const int64_t h_col_end = ::min(h_im / stride_height + 1, height_col);
 
   // TODO: use LCM of stride and dilation to avoid unnecessary loops
-  for (int64_t h_col = h_col_start; h_col < h_col_end; h_col += 1) {
-    for (int64_t w_col = w_col_start; w_col < w_col_end; w_col += 1) {
+  for (const auto h_col : c10::irange(h_col_start, h_col_end)) {
+    for (const auto w_col : c10::irange(w_col_start, w_col_end)) {
       int64_t h_k = (h_im - h_col * stride_height);
       int64_t w_k = (w_im - w_col * stride_width);
       if (h_k % dilation_height == 0 && w_k % dilation_width == 0) {

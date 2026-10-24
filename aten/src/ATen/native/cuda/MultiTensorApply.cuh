@@ -5,6 +5,7 @@
 #include <ATen/record_function.h>
 #endif
 #include <c10/cuda/CUDAGuard.h>
+#include <c10/util/irange.h>
 #include <ATen/native/cuda/Loops.cuh>
 #include <ATen/native/cuda/MemoryAccess.cuh>
 #include <vector>
@@ -187,7 +188,7 @@ void multi_tensor_apply(
     tensorListMeta.scalar_vals[loc_tensor_info] = scalars[t].to<scalar_T>();
     tensorListMeta.numel_for_tensor[loc_tensor_info] =
         tensor_lists[0][t].numel();
-    for (int d = 0; d < depth; d++) {
+    for (const auto d : c10::irange(depth)) {
       tensorListMeta.addresses[d][loc_tensor_info] =
           tensor_lists[d][t].const_data_ptr();
     }
@@ -236,7 +237,7 @@ void multi_tensor_apply(
               tensorListMeta.numel_for_tensor[loc_tensor_info - 1];
           tensorListMeta.scalar_vals[0] =
               tensorListMeta.scalar_vals[loc_tensor_info - 1];
-          for (int d = 0; d < depth; d++) {
+          for (const auto d : c10::irange(depth)) {
             tensorListMeta.addresses[d][0] =
                 tensorListMeta.addresses[d][loc_tensor_info - 1];
           }
@@ -277,7 +278,7 @@ void multi_tensor_apply(
   int loc_tensor_info = 0;
   int processed = 0;
 
-  for (size_t t = 0; t < n_tensors; t++) {
+  for (const auto t : c10::irange(n_tensors)) {
     // short-circuit to avoid adding empty tensors to tensorListMeta
     if (tensor_lists[0][t].numel() == 0) {
       continue;
@@ -285,7 +286,7 @@ void multi_tensor_apply(
     processed++;
     tensorListMeta.numel_for_tensor[loc_tensor_info] =
         tensor_lists[0][t].numel();
-    for (int d = 0; d < depth; d++) {
+    for (const auto d : c10::irange(depth)) {
       tensorListMeta.addresses[d][loc_tensor_info] =
           tensor_lists[d][t].const_data_ptr();
     }
@@ -323,7 +324,7 @@ void multi_tensor_apply(
         } else {
           tensorListMeta.numel_for_tensor[0] =
               tensorListMeta.numel_for_tensor[loc_tensor_info - 1];
-          for (int d = 0; d < depth; d++) {
+          for (const auto d : c10::irange(depth)) {
             tensorListMeta.addresses[d][0] =
                 tensorListMeta.addresses[d][loc_tensor_info - 1];
           }
